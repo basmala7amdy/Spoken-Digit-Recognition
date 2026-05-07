@@ -5,70 +5,67 @@ import numpy as np
 from preprocessing import remove_noise, apply_gaussian, smooth_signal
 from feature_extraction import extract_features
 
-
-DATA_PATH = "data/recordings"
+DATA_PATH = "recordings"
 
 
 def extract_label(filename):
-    """
-    Example filename:
-    3_jackson_10.wav -> label = 3
-    """
-    return int(filename.split("_")[0])
+    try:
+        return int(filename.split("_")[0])
+    except:
+        return None
 
 
 def load_audio(file_path, sr=22050):
-    """
-    Load WAV file using librosa
-    """
     signal, sample_rate = librosa.load(file_path, sr=sr)
     return signal, sample_rate
 
 
 def build_dataset():
-    """
-    Builds X, y for ML model
-    """
     X = []
     y = []
 
-    for file in os.listdir(DATA_PATH):
-        if file.endswith(".wav"):
-            file_path = os.path.join(DATA_PATH, file)
+    files = os.listdir(DATA_PATH)
 
-            try:
-                # 1. Load audio
-                signal, sr = load_audio(file_path)
+    if len(files) == 0:
+        print("No audio files found in recordings/")
+        return np.array(X), np.array(y)
 
-                # 2. Preprocessing pipeline
-                signal = remove_noise(signal)
-                signal = apply_gaussian(signal)
-                signal = smooth_signal(signal)
+    for file in files:
+        if not file.endswith(".wav"):
+            continue
 
-                # 3. Feature extraction (MFCC or others)
-                features = extract_features(signal, sr)
+        file_path = os.path.join(DATA_PATH, file)
 
-                # 4. Label extraction
-                label = extract_label(file)
+        if file == "test.wav":
+            continue
 
-                # 5. Append to dataset
-                X.append(features)
-                y.append(label)
+        try:
+            signal, sr = load_audio(file_path)
 
-            except Exception as e:
-                print(f"Error processing {file}: {e}")
+            signal = remove_noise(signal)
+            signal = apply_gaussian(signal)
+            signal = smooth_signal(signal)
 
-    # Convert to numpy arrays
+            features = extract_features(signal, sr)
+            label = extract_label(file)
+
+            if label is None:
+                continue
+
+            X.append(features)
+            y.append(label)
+
+        except Exception as e:
+            print(f"Error processing {file}: {e}")
+
     X = np.array(X)
     y = np.array(y)
 
-    print(f"Dataset created successfully!")
-    print(f"X shape: {X.shape}")
-    print(f"y shape: {y.shape}")
+    print("Dataset Loaded Successfully")
+    print(f"Total Samples: {len(X)}")
 
     return X, y
 
 
-# Optional test run
 if __name__ == "__main__":
     X, y = build_dataset()
