@@ -1,0 +1,10 @@
+numpy
+scipy
+librosa
+soundfile
+pydub
+scikit-learn
+pyaudio
+customtkinter
+pygame
+seaborn
