@@ -1,240 +1,207 @@
-import customtkinter as ctk
-import sounddevice as sd
-from scipy.io.wavfile import write
-import pygame
-import threading
-import time
+import streamlit as st
+import numpy as np
 import os
 
-# ==============================
-# APP SETTINGS
-# ==============================
+from tensorflow.keras.models import load_model
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+from preprocessing import preprocess_audio
+from feature_extraction import extract_feature
 
-app = ctk.CTk()
-app.geometry("650x500")
-app.title("Spoken Digit Recognition")
+# ------------------------------------------------
+# PAGE CONFIG
+# ------------------------------------------------
 
-# ==============================
-# VARIABLES
-# ==============================
+st.set_page_config(
+    page_title="Spoken Digit Recognition",
+    page_icon="🎤",
+    layout="centered"
+)
 
-fs = 44100
-duration = 5
-recording = None
-is_recording = False
+# ------------------------------------------------
+# GALAXY STYLE
+# ------------------------------------------------
 
-# ==============================
-# CREATE RECORDINGS FOLDER
-# ==============================
+st.markdown("""
+<style>
 
-if not os.path.exists("recordings"):
-    os.makedirs("recordings")
+.stApp {
+    background: linear-gradient(
+        135deg,
+        #050816,
+        #0b1026,
+        #140b2d,
+        #1f1147
+    );
+    background-attachment: fixed;
+    color: white;
+}
 
-# ==============================
-# RECORD AUDIO FUNCTION
-# ==============================
+.main-title {
+    text-align: center;
+    font-size: 50px;
+    font-weight: bold;
+    color: #d7b3ff;
+    text-shadow: 0px 0px 20px #8f5cff;
+}
 
-def start_recording():
+.sub-text {
+    text-align: center;
+    color: #cfcfff;
+    font-size: 18px;
+}
 
-    thread = threading.Thread(target=record_audio)
+.block-container {
+    padding-top: 2rem;
+}
 
-    thread.start()
+[data-testid="stFileUploader"] {
+    background: rgba(255,255,255,0.08);
+    padding: 20px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.15);
+    backdrop-filter: blur(10px);
+}
 
-# ------------------------------
+.stButton>button {
+    width: 100%;
+    height: 55px;
+    border-radius: 18px;
+    border: none;
+    font-size: 20px;
+    font-weight: bold;
+    color: white;
+    background: linear-gradient(
+        90deg,
+        #7f5cff,
+        #c44dff,
+        #00c2ff
+    );
+    box-shadow: 0px 0px 20px rgba(140, 82, 255, 0.7);
+    transition: 0.3s;
+}
 
-def record_audio():
+.stButton>button:hover {
+    transform: scale(1.03);
+    box-shadow: 0px 0px 30px rgba(0, 194, 255, 0.8);
+}
 
-    global recording
-    global is_recording
+.result-box {
+    background: rgba(255,255,255,0.08);
+    padding: 25px;
+    border-radius: 25px;
+    text-align: center;
+    margin-top: 30px;
+    border: 1px solid rgba(255,255,255,0.15);
+    backdrop-filter: blur(12px);
+}
 
-    is_recording = True
+.result-digit {
+    font-size: 90px;
+    font-weight: bold;
+    color: #b266ff;
+    text-shadow: 0px 0px 25px #b266ff;
+}
 
-    record_btn.configure(state="disabled")
+.result-text {
+    font-size: 24px;
+    color: white;
+}
 
-    progress_bar.set(0)
+</style>
+""", unsafe_allow_html=True)
 
-    for i in range(duration, 0, -1):
+# ------------------------------------------------
+# TITLE
+# ------------------------------------------------
 
-        status_label.configure(
-            text=f"🎤 Recording... {i}"
-        )
+st.markdown(
+    "<div class='main-title'>🎤 Spoken Digit Recognition</div>",
+    unsafe_allow_html=True
+)
 
-        progress_bar.set(
-            (duration - i) / duration
-        )
+st.markdown(
+    "<div class='sub-text'>Upload WAV audio and detect spoken number (0 → 9)</div>",
+    unsafe_allow_html=True
+)
 
-        app.update()
+st.write("")
 
-        time.sleep(1)
+# ------------------------------------------------
+# CREATE FOLDERS
+# ------------------------------------------------
 
-    # Actual Recording
-    recording = sd.rec(
-        int(duration * fs),
-        samplerate=fs,
-        channels=1
+os.makedirs("recordings", exist_ok=True)
+
+# ------------------------------------------------
+# LOAD MODEL
+# ------------------------------------------------
+
+MODEL_PATH = "models/digit_model.keras"
+
+model = load_model(MODEL_PATH)
+
+# ------------------------------------------------
+# FILE UPLOADER
+# ------------------------------------------------
+
+audio_file = st.file_uploader(
+    "Upload WAV File",
+    type=["wav"]
+)
+
+# ------------------------------------------------
+# PREDICTION FUNCTION
+# ------------------------------------------------
+
+def predict(file_path):
+
+    preprocess_audio(
+        file_path,
+        "recordings/clean.wav"
     )
 
-    sd.wait()
-
-    # Save WAV
-    write(
-        "recordings/test.wav",
-        fs,
-        recording
+    feature = extract_feature(
+        "recordings/clean.wav"
     )
 
-    # Finish UI
-    progress_bar.set(1)
+    feature = feature / np.max(feature)
 
-    status_label.configure(
-        text="✅ Recording Saved Successfully!"
-    )
+    feature = np.array(feature).reshape(1, -1)
 
-    record_btn.configure(state="normal")
+    pred = model.predict(feature, verbose=0)
 
-    is_recording = False
+    digit = np.argmax(pred)
 
-# ==============================
-# PLAY AUDIO
-# ==============================
+    confidence = np.max(pred)
 
-def play_audio():
+    return digit, confidence
 
-    try:
+# ------------------------------------------------
+# BUTTON
+# ------------------------------------------------
 
-        pygame.mixer.init()
+if st.button("✨ Predict Digit"):
 
-        pygame.mixer.music.load(
-            "recordings/test.wav"
-        )
+    if audio_file is not None:
 
-        pygame.mixer.music.play()
+        path = "recordings/test.wav"
 
-        status_label.configure(
-            text="▶️ Playing Audio..."
-        )
+        with open(path, "wb") as f:
+            f.write(audio_file.read())
 
-    except:
+        # ------------------------------------------------
+        # PLAY AUDIO
+        # ------------------------------------------------
 
-        status_label.configure(
-            text="❌ No Recording Found"
-        )
+        st.audio(path)
 
-# ==============================
-# HEADER
-# ==============================
+        # ------------------------------------------------
+        # PREDICT
+        # ------------------------------------------------
 
-title = ctk.CTkLabel(
-    app,
-    text="🎙 Spoken Digit Recognition",
-    font=("Arial", 30, "bold")
-)
+        result, confidence = predict(path)
 
-title.pack(pady=25)
-
-# ==============================
-# DESCRIPTION
-# ==============================
-
-description = ctk.CTkLabel(
-    app,
-    text="Record your voice and test the AI model",
-    font=("Arial", 16),
-    text_color="gray"
-)
-
-description.pack(pady=5)
-
-# ==============================
-# MAIN FRAME
-# ==============================
-
-main_frame = ctk.CTkFrame(
-    app,
-    width=500,
-    height=300,
-    corner_radius=25
-)
-
-main_frame.pack(pady=30)
-
-# ==============================
-# RECORD BUTTON
-# ==============================
-
-record_btn = ctk.CTkButton(
-    main_frame,
-    text="🎤 Start Recording",
-    command=start_recording,
-    width=250,
-    height=55,
-    corner_radius=20,
-    font=("Arial", 18, "bold")
-)
-
-record_btn.pack(pady=30)
-
-# ==============================
-# PLAY BUTTON
-# ==============================
-
-play_btn = ctk.CTkButton(
-    main_frame,
-    text="▶️ Play Recording",
-    command=play_audio,
-    width=250,
-    height=55,
-    corner_radius=20,
-    font=("Arial", 18, "bold")
-)
-
-play_btn.pack(pady=10)
-
-# ==============================
-# PROGRESS BAR
-# ==============================
-
-progress_bar = ctk.CTkProgressBar(
-    main_frame,
-    width=350,
-    height=20,
-    corner_radius=20
-)
-
-progress_bar.pack(pady=25)
-
-progress_bar.set(0)
-
-# ==============================
-# STATUS LABEL
-# ==============================
-
-status_label = ctk.CTkLabel(
-    main_frame,
-    text="🟢 Ready",
-    font=("Arial", 17)
-)
-
-status_label.pack(pady=10)
-
-# ==============================
-# FOOTER
-# ==============================
-
-footer = ctk.CTkLabel(
-    app,
-    text="AI DSP Project • ERU",
-    font=("Arial", 13),
-    text_color="gray"
-)
-
-footer.pack(side="bottom", pady=15)
-
-# ==============================
-# RUN APP
-# ==============================
-
-app.mainloop()
+        # ------------------------------------------------
+        # RESULT UI
+        # ------------------------------------------------
+        st.markdown(f"## 🎯 {result}")

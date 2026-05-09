@@ -1,71 +1,31 @@
 import os
-import librosa
 import numpy as np
+from feature_extraction import extract_feature
 
-from preprocessing import remove_noise, apply_gaussian, smooth_signal
-from feature_extraction import extract_features
-
-DATA_PATH = "recordings"
+DATASET_PATH = "dataset"
 
 
-def extract_label(filename):
-    try:
-        return int(filename.split("_")[0])
-    except:
-        return None
+def load_dataset():
 
-
-def load_audio(file_path, sr=22050):
-    signal, sample_rate = librosa.load(file_path, sr=sr)
-    return signal, sample_rate
-
-
-def build_dataset():
     X = []
     y = []
 
-    files = os.listdir(DATA_PATH)
+    for label_folder in os.listdir(DATASET_PATH):
 
-    if len(files) == 0:
-        print("No audio files found in recordings/")
-        return np.array(X), np.array(y)
+        folder_path = os.path.join(DATASET_PATH, label_folder)
 
-    for file in files:
-        if not file.endswith(".wav"):
+        if not os.path.isdir(folder_path):
             continue
 
-        file_path = os.path.join(DATA_PATH, file)
+        for file in os.listdir(folder_path):
 
-        if file == "test.wav":
-            continue
+            if file.endswith(".wav"):
 
-        try:
-            signal, sr = load_audio(file_path)
+                file_path = os.path.join(folder_path, file)
 
-            signal = remove_noise(signal)
-            signal = apply_gaussian(signal)
-            signal = smooth_signal(signal)
+                feature = extract_feature(file_path)
 
-            features = extract_features(signal, sr)
-            label = extract_label(file)
+                X.append(feature)
+                y.append(int(label_folder))
 
-            if label is None:
-                continue
-
-            X.append(features)
-            y.append(label)
-
-        except Exception as e:
-            print(f"Error processing {file}: {e}")
-
-    X = np.array(X)
-    y = np.array(y)
-
-    print("Dataset Loaded Successfully")
-    print(f"Total Samples: {len(X)}")
-
-    return X, y
-
-
-if __name__ == "__main__":
-    X, y = build_dataset()
+    return np.array(X), np.array(y)
